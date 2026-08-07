@@ -21,22 +21,53 @@
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     max-width: 1100px; margin: 0 auto;
   }
-  #grid a { display: block; border-radius: 10px; overflow: hidden; background: #1a1a22; aspect-ratio: 4/3; }
+  #grid button.cell {
+    display: block; border: 0; padding: 0; cursor: pointer;
+    border-radius: 10px; overflow: hidden; background: #1a1a22; aspect-ratio: 4/3;
+  }
   #grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
   #more { display: none; margin: 10px auto 30px; padding: 10px 26px; font-size: 1rem;
           border: 0; border-radius: 999px; background: #2b6cff; color: #fff; }
   footer { text-align: center; color: #55555f; font-size: .8rem; padding: 20px; }
+
+  /* Visionneuse plein écran */
+  #viewer {
+    display: none; position: fixed; inset: 0; z-index: 10;
+    background: rgba(5, 5, 8, .96);
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px; gap: 16px;
+  }
+  #viewer.open { display: flex; }
+  #viewer img {
+    max-width: 100%; max-height: calc(100% - 90px);
+    border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.6);
+  }
+  #viewer .bar { display: flex; gap: 14px; }
+  #viewer a.btn, #viewer button.btn {
+    display: inline-block; padding: 12px 26px; font-size: 1rem; font-weight: 600;
+    border: 0; border-radius: 999px; cursor: pointer; text-decoration: none;
+  }
+  #viewer .download { background: #2b6cff; color: #fff; }
+  #viewer .close { background: #2a2a33; color: #fff; }
 </style>
 </head>
 <body>
 <header>
   <h1>📸 PhotoBooth Gallery</h1>
-  <p>Touchez une photo pour l'ouvrir en grand, puis maintenez pour l'enregistrer.</p>
+  <p>Touchez une photo pour l'ouvrir en grand, puis « Télécharger » pour la garder.</p>
 </header>
 <div id="status">Chargement des photos…</div>
 <div id="grid"></div>
 <button id="more">Afficher plus</button>
 <footer>Galerie privée — Damien&amp;Emilie</footer>
+
+<div id="viewer">
+  <img id="viewerImg" alt="Photo">
+  <div class="bar">
+    <a class="btn download" id="viewerDownload" href="#">⬇ Télécharger</a>
+    <button class="btn close" id="viewerClose">Fermer</button>
+  </div>
+</div>
 
 <script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
 <script>
@@ -50,10 +81,28 @@ const eventCode = (params.get("e") || "").trim();
 const statusEl = document.getElementById("status");
 const gridEl = document.getElementById("grid");
 const moreBtn = document.getElementById("more");
+const viewer = document.getElementById("viewer");
+const viewerImg = document.getElementById("viewerImg");
+const viewerDownload = document.getElementById("viewerDownload");
 let continuationMarker = null;
 let database = null;
 
 function setStatus(text) { statusEl.textContent = text; statusEl.style.display = text ? "block" : "none"; }
+
+function openViewer(photoURL) {
+  // L'affichage passe par <img> (les adresses CloudKit forcent sinon le téléchargement).
+  viewerImg.src = photoURL;
+  viewerDownload.href = photoURL;
+  viewer.classList.add("open");
+}
+function closeViewer() {
+  viewer.classList.remove("open");
+  viewerImg.src = "";
+}
+document.getElementById("viewerClose").addEventListener("click", closeViewer);
+viewer.addEventListener("click", event => {
+  if (event.target === viewer) { closeViewer(); }
+});
 
 if (!eventCode) {
   setStatus("Lien incomplet : scannez le QR code affiché sur l'iPad.");
@@ -92,21 +141,21 @@ function loadPhotos(reset) {
     for (const record of response.records) {
       // Les adresses CloudKit contiennent un espace réservé "${f}" à remplacer
       // par le nom de fichier voulu (sinon le téléchargement s'appelle "${f}").
-      const fileName = "darkbooth-" + (record.recordName || "photo") + ".jpg";
+      const fileName = "photobooth-" + (record.recordName || "photo") + ".jpg";
       const withName = url => url && url.split("${f}").join(encodeURIComponent(fileName));
       const photo = withName(record.fields.photo && record.fields.photo.value.downloadURL);
       const thumb = withName((record.fields.thumb && record.fields.thumb.value.downloadURL)) || photo;
       if (!photo) continue;
-      const link = document.createElement("a");
-      link.href = photo;
-      link.target = "_blank";
-      link.rel = "noopener";
+      const cell = document.createElement("button");
+      cell.className = "cell";
+      cell.type = "button";
+      cell.addEventListener("click", () => openViewer(photo));
       const img = document.createElement("img");
       img.loading = "lazy";
       img.src = thumb;
-      img.alt = "Photo DarkBooth";
-      link.appendChild(img);
-      gridEl.appendChild(link);
+      img.alt = "Photo";
+      cell.appendChild(img);
+      gridEl.appendChild(cell);
     }
     continuationMarker = response.continuationMarker || null;
     moreBtn.style.display = continuationMarker ? "block" : "none";
