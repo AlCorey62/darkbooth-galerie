@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DarkBooth — Vos photos</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b0b0f; color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  header { text-align: center; padding: 28px 16px 10px; }
+  header h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: .5px; }
+  header p { color: #9a9aa5; margin-top: 6px; font-size: .95rem; }
+  #status { text-align: center; color: #9a9aa5; padding: 18px; }
+  #grid {
+    display: grid; gap: 8px; padding: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    max-width: 1100px; margin: 0 auto;
+  }
+  #grid a { display: block; border-radius: 10px; overflow: hidden; background: #1a1a22; aspect-ratio: 4/3; }
+  #grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #more { display: none; margin: 10px auto 30px; padding: 10px 26px; font-size: 1rem;
+          border: 0; border-radius: 999px; background: #2b6cff; color: #fff; }
+  footer { text-align: center; color: #55555f; font-size: .8rem; padding: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📸 DarkBooth</h1>
+  <p>Touchez une photo pour l'ouvrir en grand, puis maintenez pour l'enregistrer.</p>
+</header>
+<div id="status">Chargement des photos…</div>
+<div id="grid"></div>
+<button id="more">Afficher plus</button>
+<footer>Galerie privée — Darkside Energy</footer>
+
+<script src="https://cdn.apple-cloudkit.com/ck/2/cloudkit.js"></script>
+<script>
+// ─── À CONFIGURER (une seule fois, voir SETUP-GALERIE.md) ────────────────────
+const API_TOKEN = "74760a9ee059aad318c1d5bd8a7d0daea8ac55289a949b412ec6c55dc975e2fc";
+const ENVIRONMENT = "development"; // passer à "production" plus tard si besoin
+// ─────────────────────────────────────────────────────────────────────────────
+
+const params = new URLSearchParams(location.search);
+const eventCode = (params.get("e") || "").trim();
+const statusEl = document.getElementById("status");
+const gridEl = document.getElementById("grid");
+const moreBtn = document.getElementById("more");
+let continuationMarker = null;
+let database = null;
+
+function setStatus(text) { statusEl.textContent = text; statusEl.style.display = text ? "block" : "none"; }
+
+if (!eventCode) {
+  setStatus("Lien incomplet : scannez le QR code affiché sur l'iPad.");
+} else if (API_TOKEN.startsWith("COLLER_ICI")) {
+  setStatus("Galerie pas encore configurée (token API manquant).");
+} else {
+  CloudKit.configure({
+    containers: [{
+      containerIdentifier: "iCloud.com.darkside.DarkBooth",
+      apiTokenAuth: { apiToken: API_TOKEN, persist: false },
+      environment: ENVIRONMENT
+    }]
+  });
+  database = CloudKit.getDefaultContainer().publicCloudDatabase;
+  loadPhotos(true);
+  setInterval(() => loadPhotos(true), 60000); // rafraîchissement auto pendant la soirée
+}
+
+function loadPhotos(reset) {
+  if (reset) { continuationMarker = null; }
+  const query = {
+    recordType: "BoothPhoto",
+    filterBy: [{ fieldName: "eventCode", comparator: "EQUALS", fieldValue: { value: eventCode } }],
+    sortBy: [{ fieldName: "takenAt", ascending: false }]
+  };
+  const options = { resultsLimit: 60, desiredKeys: ["photo", "thumb", "takenAt"] };
+  if (continuationMarker) { options.continuationMarker = continuationMarker; }
+
+  database.performQuery(query, options).then(response => {
+    if (response.hasErrors) {
+      setStatus("Impossible de charger les photos pour le moment. Réessayez dans une minute.");
+      console.error(response.errors);
+      return;
+    }
+    if (reset) { gridEl.innerHTML = ""; }
+    for (const record of response.records) {
+      const photo = record.fields.photo && record.fields.photo.value.downloadURL;
+      const thumb = (record.fields.thumb && record.fields.thumb.value.downloadURL) || photo;
+      if (!photo) continue;
+      const link = document.createElement("a");
+      link.href = photo;
+      link.target = "_blank";
+      link.rel = "noopener";
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.src = thumb;
+      img.alt = "Photo DarkBooth";
+      link.appendChild(img);
+      gridEl.appendChild(link);
+    }
+    continuationMarker = response.continuationMarker || null;
+    moreBtn.style.display = continuationMarker ? "block" : "none";
+    setStatus(gridEl.children.length === 0 ? "Pas encore de photos — revenez dans un instant !" : "");
+  }).catch(() => {
+    setStatus("Impossible de charger les photos pour le moment. Réessayez dans une minute.");
+  });
+}
+
+moreBtn.addEventListener("click", () => loadPhotos(false));
+</script>
+</body>
+</html>
