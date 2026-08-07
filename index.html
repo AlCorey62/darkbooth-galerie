@@ -90,8 +90,12 @@ function loadPhotos(reset) {
     }
     if (reset) { gridEl.innerHTML = ""; }
     for (const record of response.records) {
-      const photo = record.fields.photo && record.fields.photo.value.downloadURL;
-      const thumb = (record.fields.thumb && record.fields.thumb.value.downloadURL) || photo;
+      // Les adresses CloudKit contiennent un espace réservé "${f}" à remplacer
+      // par le nom de fichier voulu (sinon le téléchargement s'appelle "${f}").
+      const fileName = "darkbooth-" + (record.recordName || "photo") + ".jpg";
+      const withName = url => url && url.split("${f}").join(encodeURIComponent(fileName));
+      const photo = withName(record.fields.photo && record.fields.photo.value.downloadURL);
+      const thumb = withName((record.fields.thumb && record.fields.thumb.value.downloadURL)) || photo;
       if (!photo) continue;
       const link = document.createElement("a");
       link.href = photo;
